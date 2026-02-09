@@ -20,21 +20,31 @@ export default defineNuxtConfig({
     preference: 'dark'
   },
 
-  routeRules: {
-    '/': { prerender: true },
-    '/callback': { ssr: false },
-    '/**': {
-      headers: {
-        'X-Frame-Options': 'DENY',
-        'X-Content-Type-Options': 'nosniff',
-        'Referrer-Policy': 'strict-origin-when-cross-origin',
-        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-        'X-DNS-Prefetch-Control': 'off'
+  compatibilityDate: '2025-01-15',
+
+  nitro: {
+    routeRules: {
+      '/': { prerender: true },
+      '/callback': { ssr: false },
+      '/**': {
+        headers: {
+          'X-Frame-Options': 'DENY',
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'strict-origin-when-cross-origin',
+          'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+          'X-DNS-Prefetch-Control': 'off'
+        }
       }
     }
   },
 
-  compatibilityDate: '2025-01-15',
+  // Workaround: @nuxt/fonts (via @nuxt/ui) leaves an esbuild process alive
+  // after build/generate, causing CI to hang. See https://github.com/nuxt/nuxt/issues/33987
+  hooks: {
+    close: () => {
+      process.exit(0)
+    }
+  },
 
   eslint: {
     config: {
