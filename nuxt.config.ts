@@ -16,6 +16,10 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  colorMode: {
+    preference: 'dark'
+  },
+
   routeRules: {
     '/': { prerender: true },
     '/callback': { ssr: false },
@@ -28,10 +32,6 @@ export default defineNuxtConfig({
         'X-DNS-Prefetch-Control': 'off'
       }
     }
-  },
-
-  colorMode: {
-    preference: 'dark'
   },
 
   compatibilityDate: '2025-01-15',
