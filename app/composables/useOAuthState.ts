@@ -49,6 +49,9 @@ export function useOAuthState() {
     if (stored) {
       try {
         session.value = JSON.parse(stored)
+        // Always update redirectUri to match the current origin
+        // so it doesn't stay stale (e.g. stuck on localhost from a previous session)
+        session.value.config.redirectUri = `${window.location.origin}${useRuntimeConfig().app.baseURL}callback`
         return true
       } catch {
         return false

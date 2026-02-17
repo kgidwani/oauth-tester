@@ -206,6 +206,7 @@ function onFlowChange(flow: OAuthFlowType) {
           v-for="(value, key) in session.config.extraParams"
           :key="String(key)"
           :label="String(key)"
+          :description="selectedPreset?.extraParamDescriptions?.[String(key)]"
         >
           <UInput
             :model-value="String(value)"

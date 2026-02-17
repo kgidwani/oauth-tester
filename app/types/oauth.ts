@@ -9,6 +9,7 @@ export interface OAuthProviderPreset {
   scopes: string[]
   supportsFlows: OAuthFlowType[]
   extraParams?: Record<string, string>
+  extraParamDescriptions?: Record<string, string>
   domainRequired?: boolean
   domainPlaceholder?: string
 }

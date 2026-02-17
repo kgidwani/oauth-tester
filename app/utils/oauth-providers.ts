@@ -11,7 +11,8 @@ export const OAUTH_PROVIDER_PRESETS: OAuthProviderPreset[] = [
     supportsFlows: ['authorization_code', 'authorization_code_pkce', 'implicit'],
     domainRequired: true,
     domainPlaceholder: 'your-tenant.us.auth0.com',
-    extraParams: { audience: '' }
+    extraParams: { audience: '' },
+    extraParamDescriptions: { audience: 'Required for JWT access tokens. Find this under APIs in your Auth0 dashboard.' }
   },
   {
     id: 'okta',
