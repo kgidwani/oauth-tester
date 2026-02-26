@@ -108,6 +108,13 @@ function handleRetry() {
       />
 
       <template v-else>
+        <!-- Token structure debug -->
+        <div class="text-xs text-dimmed font-mono border border-default rounded-lg p-3 space-y-1">
+          <p>Token parts: {{ String(accessToken).split('.').length }} | Token length: {{ String(accessToken).length }}</p>
+          <p>Part lengths: [{{ String(accessToken).split('.').map(p => p.length).join(', ') }}]</p>
+          <p>Starts with: {{ String(accessToken).substring(0, 50) }}</p>
+        </div>
+
         <!-- Token format detection -->
         <UAlert
           v-if="tokenFormat === 'JWE'"
