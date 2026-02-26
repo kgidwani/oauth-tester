@@ -22,7 +22,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Missing or invalid Authorization header. Expected: Bearer <token>' })
   }
 
-  const token = authHeader.slice(7)
+  const token = authHeader.slice(7).trim()
+  if (!token) {
+    throw createError({ statusCode: 401, statusMessage: 'Bearer token is empty' })
+  }
   if (token.length > MAX_TOKEN_LENGTH) {
     throw createError({ statusCode: 401, statusMessage: 'Token exceeds maximum length' })
   }
@@ -47,6 +50,24 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: `Blocked JWKS URI: ${endpointCheck.reason}` })
   }
 
+  // Check that the token looks like a JWT (3 non-empty base64url-encoded parts separated by dots)
+  const parts = token.split('.')
+  if (parts.length !== 3) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: `The access token is not a JWT (expected 3 dot-separated parts, got ${parts.length}). This is likely an opaque token. For Auth0, set the "audience" parameter in the Configure step to receive a JWT access token.`
+    })
+  }
+  const emptyParts = parts.map((p, i) => p.length === 0 ? i : -1).filter(i => i >= 0)
+  if (emptyParts.length > 0) {
+    const labels = ['header', 'payload', 'signature']
+    const emptyLabels = emptyParts.map(i => labels[i]).join(', ')
+    throw createError({
+      statusCode: 401,
+      statusMessage: `Malformed JWT: empty segment(s) at position(s) ${emptyParts.join(', ')} (${emptyLabels}). Part lengths: [${parts.map(p => p.length).join(', ')}]. Token starts with: "${token.substring(0, 40)}"`
+    })
+  }
+
   try {
     const JWKS = createRemoteJWKSet(new URL(jwksUri))
 
@@ -64,6 +85,18 @@ export default defineEventHandler(async (event) => {
     }
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Token validation failed'
-    throw createError({ statusCode: 401, statusMessage: message })
+    const code = e && typeof e === 'object' && 'code' in e ? String((e as Record<string, unknown>).code) : undefined
+
+    // Surface diagnostic info for debugging
+    const tokenPreview = `${token.substring(0, 30)}...${token.substring(token.length - 10)}`
+    const detail = [
+      message,
+      code ? `(code: ${code})` : '',
+      `| token length: ${token.length}`,
+      `| token preview: ${tokenPreview}`,
+      `| jwks_uri: ${jwksUri}`
+    ].filter(Boolean).join(' ')
+
+    throw createError({ statusCode: 401, statusMessage: detail })
   }
 })
