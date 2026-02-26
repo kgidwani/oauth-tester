@@ -48,6 +48,7 @@ export interface OAuthSession {
   authorizationCode: string | null
   tokenResponse: TokenResponse | null
   tokenError: string | null
+  resourceServerResponse: ResourceServerResponse | null
   createdAt: string
   updatedAt: string
 }
@@ -87,4 +88,16 @@ export interface TokenExchangeResponse {
   rawResponse?: string | null
   exchangeMethod?: 'server' | 'client'
   debugRequest?: Record<string, string>
+}
+
+export interface ResourceServerResponse {
+  success: boolean
+  statusCode: number
+  data?: {
+    status: string
+    message: string
+    header: Record<string, unknown>
+    claims: Record<string, unknown>
+  }
+  error?: string
 }

@@ -1,4 +1,4 @@
-import type { OAuthSession, OAuthProviderConfig, PkceState, TokenResponse } from '~/types/oauth'
+import type { OAuthSession, OAuthProviderConfig, PkceState, TokenResponse, ResourceServerResponse } from '~/types/oauth'
 
 const STORAGE_KEY = 'oauth-test-session'
 
@@ -35,6 +35,7 @@ function createSession(): OAuthSession {
     authorizationCode: null,
     tokenResponse: null,
     tokenError: null,
+    resourceServerResponse: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }
@@ -115,6 +116,10 @@ export function useOAuthState() {
     session.value.tokenResponse = null
   }
 
+  function setResourceServerResponse(response: ResourceServerResponse): void {
+    session.value.resourceServerResponse = response
+  }
+
   return {
     session,
     loadFromStorage,
@@ -127,6 +132,7 @@ export function useOAuthState() {
     setAuthorizationUrl,
     setCallbackResult,
     setTokenResponse,
-    setTokenError
+    setTokenError,
+    setResourceServerResponse
   }
 }

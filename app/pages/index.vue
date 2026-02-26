@@ -37,6 +37,14 @@ const steps = computed(() => {
     slot: 'decoded'
   })
 
+  base.push({
+    title: 'API Test',
+    description: 'Resource server',
+    icon: 'i-lucide-shield-check',
+    value: 'resource-server',
+    slot: 'resource-server'
+  })
+
   return base
 })
 
@@ -95,6 +103,10 @@ function handleReset() {
 
         <template #decoded>
           <OauthStepDecodedToken />
+        </template>
+
+        <template #resource-server>
+          <OauthStepResourceServer />
         </template>
       </UStepper>
 
