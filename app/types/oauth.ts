@@ -96,6 +96,7 @@ export interface ResourceServerResponse {
   data?: {
     status: string
     message: string
+    tokenFormat: 'JWS' | 'JWE'
     header: Record<string, unknown>
     claims: Record<string, unknown>
   }

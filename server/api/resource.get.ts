@@ -1,9 +1,10 @@
 import { defineEventHandler, getQuery, getHeader, createError } from 'h3'
-import { createRemoteJWKSet, jwtVerify } from 'jose'
-import type { JWTVerifyOptions } from 'jose'
+import { createRemoteJWKSet, jwtVerify, jwtDecrypt } from 'jose'
+import type { JWTVerifyOptions, JWTDecryptOptions } from 'jose'
 
 const MAX_URL_LENGTH = 2048
-const MAX_TOKEN_LENGTH = 8192
+const MAX_TOKEN_LENGTH = 16384
+const MAX_SECRET_LENGTH = 512
 
 export default defineEventHandler(async (event) => {
   // Rate limiting
@@ -33,11 +34,59 @@ export default defineEventHandler(async (event) => {
   // Read query params
   const query = getQuery(event)
   const jwksUri = String(query.jwks_uri || '')
+  const secret = query.secret ? String(query.secret) : undefined
   const issuer = query.issuer ? String(query.issuer) : undefined
   const audience = query.audience ? String(query.audience) : undefined
 
+  if (secret && secret.length > MAX_SECRET_LENGTH) {
+    throw createError({ statusCode: 400, statusMessage: 'secret exceeds maximum length' })
+  }
+
+  // Determine token format: JWS (3 parts) or JWE (5 parts)
+  const parts = token.split('.')
+  const isJWE = parts.length === 5
+  const isJWS = parts.length === 3
+
+  if (!isJWS && !isJWE) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: `The access token is not a valid JWT. Expected 3 parts (JWS) or 5 parts (JWE), got ${parts.length}. This is likely an opaque token. For Auth0, set the "audience" parameter in the Configure step to receive a JWT access token.`
+    })
+  }
+
+  if (isJWE) {
+    // JWE tokens require a symmetric secret for decryption
+    if (!secret) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'The access token is a JWE (encrypted JWT with 5 parts). A signing secret is required to decrypt it. Enter your API signing secret in the resource server settings. For Auth0, find this under Applications > APIs > your API > Signing Secret.'
+      })
+    }
+
+    try {
+      const secretKey = new TextEncoder().encode(secret)
+      const decryptOptions: JWTDecryptOptions = {}
+      if (issuer) decryptOptions.issuer = issuer
+      if (audience) decryptOptions.audience = audience
+
+      const { payload, protectedHeader } = await jwtDecrypt(token, secretKey, decryptOptions)
+
+      return {
+        status: 'ok',
+        message: 'Access token decrypted and validated (JWE)',
+        tokenFormat: 'JWE',
+        header: protectedHeader,
+        claims: payload
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'JWE decryption failed'
+      throw createError({ statusCode: 401, statusMessage: `JWE decryption/validation failed: ${message}` })
+    }
+  }
+
+  // JWS (signed JWT) — verify with JWKS
   if (!jwksUri) {
-    throw createError({ statusCode: 400, statusMessage: 'Missing required query parameter: jwks_uri' })
+    throw createError({ statusCode: 400, statusMessage: 'Missing required parameter: jwks_uri (needed for JWS signature verification)' })
   }
 
   if (jwksUri.length > MAX_URL_LENGTH) {
@@ -48,24 +97,6 @@ export default defineEventHandler(async (event) => {
   const endpointCheck = await validateTokenEndpoint(jwksUri)
   if (!endpointCheck.valid) {
     throw createError({ statusCode: 400, statusMessage: `Blocked JWKS URI: ${endpointCheck.reason}` })
-  }
-
-  // Check that the token looks like a JWT (3 non-empty base64url-encoded parts separated by dots)
-  const parts = token.split('.')
-  if (parts.length !== 3) {
-    throw createError({
-      statusCode: 401,
-      statusMessage: `The access token is not a JWT (expected 3 dot-separated parts, got ${parts.length}). This is likely an opaque token. For Auth0, set the "audience" parameter in the Configure step to receive a JWT access token.`
-    })
-  }
-  const emptyParts = parts.map((p, i) => p.length === 0 ? i : -1).filter(i => i >= 0)
-  if (emptyParts.length > 0) {
-    const labels = ['header', 'payload', 'signature']
-    const emptyLabels = emptyParts.map(i => labels[i]).join(', ')
-    throw createError({
-      statusCode: 401,
-      statusMessage: `Malformed JWT: empty segment(s) at position(s) ${emptyParts.join(', ')} (${emptyLabels}). Part lengths: [${parts.map(p => p.length).join(', ')}]. Token starts with: "${token.substring(0, 40)}"`
-    })
   }
 
   try {
@@ -79,24 +110,13 @@ export default defineEventHandler(async (event) => {
 
     return {
       status: 'ok',
-      message: 'Access token is valid',
+      message: 'Access token signature verified (JWS)',
+      tokenFormat: 'JWS',
       header: protectedHeader,
       claims: payload
     }
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Token validation failed'
-    const code = e && typeof e === 'object' && 'code' in e ? String((e as Record<string, unknown>).code) : undefined
-
-    // Surface diagnostic info for debugging
-    const tokenPreview = `${token.substring(0, 30)}...${token.substring(token.length - 10)}`
-    const detail = [
-      message,
-      code ? `(code: ${code})` : '',
-      `| token length: ${token.length}`,
-      `| token preview: ${tokenPreview}`,
-      `| jwks_uri: ${jwksUri}`
-    ].filter(Boolean).join(' ')
-
-    throw createError({ statusCode: 401, statusMessage: detail })
+    throw createError({ statusCode: 401, statusMessage: `JWS verification failed: ${message}` })
   }
 })
