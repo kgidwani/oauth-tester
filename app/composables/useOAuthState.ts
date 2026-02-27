@@ -1,4 +1,4 @@
-import type { OAuthSession, OAuthProviderConfig, PkceState, TokenResponse, ResourceServerResponse } from '~/types/oauth'
+import type { OAuthSession, OAuthProviderConfig, PkceState, TokenResponse, ResourceServerResponse, JwksCache } from '~/types/oauth'
 
 const STORAGE_KEY = 'oauth-test-session'
 
@@ -36,6 +36,7 @@ function createSession(): OAuthSession {
     tokenResponse: null,
     tokenError: null,
     resourceServerResponse: null,
+    jwksCache: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }
@@ -120,6 +121,14 @@ export function useOAuthState() {
     session.value.resourceServerResponse = response
   }
 
+  function setJwksCache(cache: JwksCache): void {
+    session.value.jwksCache = cache
+  }
+
+  function clearJwksCache(): void {
+    session.value.jwksCache = null
+  }
+
   return {
     session,
     loadFromStorage,
@@ -133,6 +142,8 @@ export function useOAuthState() {
     setCallbackResult,
     setTokenResponse,
     setTokenError,
-    setResourceServerResponse
+    setResourceServerResponse,
+    setJwksCache,
+    clearJwksCache
   }
 }

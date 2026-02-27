@@ -1,8 +1,7 @@
-import { defineEventHandler, getQuery, getHeader, createError } from 'h3'
-import { createRemoteJWKSet, jwtVerify, jwtDecrypt } from 'jose'
+import { defineEventHandler, readBody, getHeader, createError } from 'h3'
+import { createLocalJWKSet, jwtVerify, jwtDecrypt } from 'jose'
 import type { JWTVerifyOptions, JWTDecryptOptions } from 'jose'
 
-const MAX_URL_LENGTH = 2048
 const MAX_TOKEN_LENGTH = 16384
 const MAX_SECRET_LENGTH = 512
 
@@ -31,12 +30,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Token exceeds maximum length' })
   }
 
-  // Read query params
-  const query = getQuery(event)
-  const jwksUri = String(query.jwks_uri || '')
-  const secret = query.secret ? String(query.secret) : undefined
-  const issuer = query.issuer ? String(query.issuer) : undefined
-  const audience = query.audience ? String(query.audience) : undefined
+  // Read body
+  const body = await readBody(event)
+  const jwks = body?.jwks as { keys: Array<Record<string, unknown>> } | undefined
+  const secret = typeof body?.secret === 'string' ? body.secret : undefined
+  const issuer = typeof body?.issuer === 'string' ? body.issuer : undefined
+  const audience = typeof body?.audience === 'string' ? body.audience : undefined
 
   if (secret && secret.length > MAX_SECRET_LENGTH) {
     throw createError({ statusCode: 400, statusMessage: 'secret exceeds maximum length' })
@@ -55,11 +54,10 @@ export default defineEventHandler(async (event) => {
   }
 
   if (isJWE) {
-    // JWE tokens require a symmetric secret for decryption
     if (!secret) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'The access token is a JWE (encrypted JWT with 5 parts). A signing secret is required to decrypt it. Enter your API signing secret in the resource server settings. For Auth0, find this under Applications > APIs > your API > Signing Secret.'
+        statusMessage: 'The access token is a JWE (encrypted JWT with 5 parts). A signing secret is required to decrypt it.'
       })
     }
 
@@ -84,33 +82,23 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // JWS (signed JWT) — verify with JWKS
-  if (!jwksUri) {
-    throw createError({ statusCode: 400, statusMessage: 'Missing required parameter: jwks_uri (needed for JWS signature verification)' })
-  }
-
-  if (jwksUri.length > MAX_URL_LENGTH) {
-    throw createError({ statusCode: 400, statusMessage: 'jwks_uri exceeds maximum length' })
-  }
-
-  // SSRF protection on JWKS URI
-  const endpointCheck = await validateTokenEndpoint(jwksUri)
-  if (!endpointCheck.valid) {
-    throw createError({ statusCode: 400, statusMessage: `Blocked JWKS URI: ${endpointCheck.reason}` })
+  // JWS — verify with locally cached JWKS (no network call)
+  if (!jwks?.keys || !Array.isArray(jwks.keys) || jwks.keys.length === 0) {
+    throw createError({ statusCode: 400, statusMessage: 'Missing JWKS keys. Fetch and cache the provider\'s JWKS in the JWKS step first.' })
   }
 
   try {
-    const JWKS = createRemoteJWKSet(new URL(jwksUri))
+    const localJWKS = createLocalJWKSet(jwks as { keys: Array<Record<string, unknown>> })
 
     const verifyOptions: JWTVerifyOptions = {}
     if (issuer) verifyOptions.issuer = issuer
     if (audience) verifyOptions.audience = audience
 
-    const { payload, protectedHeader } = await jwtVerify(token, JWKS, verifyOptions)
+    const { payload, protectedHeader } = await jwtVerify(token, localJWKS, verifyOptions)
 
     return {
       status: 'ok',
-      message: 'Access token signature verified (JWS)',
+      message: 'Access token signature verified offline (JWS) — no network call made',
       tokenFormat: 'JWS',
       header: protectedHeader,
       claims: payload

@@ -38,6 +38,14 @@ const steps = computed(() => {
   })
 
   base.push({
+    title: 'JWKS',
+    description: 'Cache keys',
+    icon: 'i-lucide-key-round',
+    value: 'jwks-cache',
+    slot: 'jwks-cache'
+  })
+
+  base.push({
     title: 'API Test',
     description: 'Resource server',
     icon: 'i-lucide-shield-check',
@@ -103,6 +111,10 @@ function handleReset() {
 
         <template #decoded>
           <OauthStepDecodedToken />
+        </template>
+
+        <template #jwks-cache>
+          <OauthStepJwksCache />
         </template>
 
         <template #resource-server>

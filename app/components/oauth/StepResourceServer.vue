@@ -2,9 +2,7 @@
 import type { ResourceServerResponse } from '~/types/oauth'
 
 const { session, setResourceServerResponse, saveToStorage } = useOAuthState()
-const { decodeJwt, isJwt } = useJwtDecode()
 
-const jwksUri = ref('')
 const secret = ref('')
 const issuer = ref('')
 const audience = ref('')
@@ -16,7 +14,6 @@ const accessToken = computed(() => {
     || null
 })
 
-// Detect token format: JWS (3 parts), JWE (5 parts), or opaque
 const tokenFormat = computed(() => {
   if (!accessToken.value) return null
   const parts = String(accessToken.value).split('.')
@@ -25,16 +22,22 @@ const tokenFormat = computed(() => {
   return 'opaque'
 })
 
-// Auto-populate fields from decoded access token claims (only works for JWS)
+const hasJwksCache = computed(() => !!session.value.jwksCache)
+
+// Auto-populate issuer/audience from cached JWKS or token claims
 onMounted(() => {
-  if (!accessToken.value || !isJwt(String(accessToken.value))) return
+  if (session.value.jwksCache?.issuer) {
+    issuer.value = session.value.jwksCache.issuer
+  }
+
+  if (!accessToken.value) return
+  const { decodeJwt, isJwt } = useJwtDecode()
+  if (!isJwt(String(accessToken.value))) return
   const decoded = decodeJwt(String(accessToken.value))
   if (!decoded) return
 
-  if (typeof decoded.payload.iss === 'string') {
+  if (!issuer.value && typeof decoded.payload.iss === 'string') {
     issuer.value = decoded.payload.iss
-    const iss = decoded.payload.iss.replace(/\/$/, '')
-    jwksUri.value = `${iss}/.well-known/jwks.json`
   }
 
   if (typeof decoded.payload.aud === 'string') {
@@ -44,19 +47,11 @@ onMounted(() => {
   }
 })
 
-const resourceEndpoint = computed(() => {
-  const params = new URLSearchParams()
-  if (jwksUri.value) params.set('jwks_uri', jwksUri.value)
-  if (secret.value) params.set('secret', secret.value)
-  if (issuer.value) params.set('issuer', issuer.value)
-  if (audience.value) params.set('audience', audience.value)
-  return `/api/resource?${params.toString()}`
-})
-
 const canSubmit = computed(() => {
   if (!accessToken.value) return false
   if (tokenFormat.value === 'JWE') return !!secret.value
-  return !!jwksUri.value
+  if (tokenFormat.value === 'JWS') return hasJwksCache.value
+  return false
 })
 
 async function handleCall() {
@@ -65,11 +60,24 @@ async function handleCall() {
   isLoading.value = true
 
   try {
-    const response = await fetch(resourceEndpoint.value, {
+    const body: Record<string, unknown> = {}
+    if (issuer.value) body.issuer = issuer.value
+    if (audience.value) body.audience = audience.value
+
+    if (tokenFormat.value === 'JWE') {
+      body.secret = secret.value
+    } else if (session.value.jwksCache) {
+      body.jwks = { keys: session.value.jwksCache.keys }
+    }
+
+    const response = await fetch('/api/resource', {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken.value}`,
+        'Content-Type': 'application/json',
         'Accept': 'application/json'
-      }
+      },
+      body: JSON.stringify(body)
     })
 
     const data = await response.json()
@@ -108,26 +116,19 @@ function handleRetry() {
       />
 
       <template v-else>
-        <!-- Token structure debug -->
-        <div class="text-xs text-dimmed font-mono border border-default rounded-lg p-3 space-y-1">
-          <p>Token parts: {{ String(accessToken).split('.').length }} | Token length: {{ String(accessToken).length }}</p>
-          <p>Part lengths: [{{ String(accessToken).split('.').map(p => p.length).join(', ') }}]</p>
-          <p>Starts with: {{ String(accessToken).substring(0, 50) }}</p>
-        </div>
-
-        <!-- Token format detection -->
+        <!-- Token format info -->
         <UAlert
           v-if="tokenFormat === 'JWE'"
           title="Encrypted Token (JWE)"
-          description="Your access token is a JWE (5-part encrypted JWT). This is common with Auth0 when the API uses HS256 signing. A signing secret is required to decrypt and validate it."
+          description="Your access token is a JWE (5-part encrypted JWT). A signing secret is required to decrypt and validate it."
           icon="i-lucide-lock"
           color="warning"
           variant="subtle"
         />
         <UAlert
           v-else-if="tokenFormat === 'JWS'"
-          title="Resource Server"
-          description="This endpoint validates your access token offline by verifying its JWT signature against the provider's JWKS and checking standard claims (expiration, issuer, audience)."
+          title="Resource Server — Offline Validation"
+          description="Validates your access token using the locally cached JWKS keys. No network calls are made during verification."
           icon="i-lucide-shield-check"
           color="neutral"
           variant="subtle"
@@ -142,6 +143,24 @@ function handleRetry() {
         />
 
         <template v-if="tokenFormat !== 'opaque'">
+          <!-- JWKS cache status (for JWS) -->
+          <UAlert
+            v-if="tokenFormat === 'JWS' && hasJwksCache"
+            :title="`Using cached JWKS (${session.jwksCache!.keys.length} keys)`"
+            :description="`Fetched from ${session.jwksCache!.jwksUri} at ${new Date(session.jwksCache!.fetchedAt).toLocaleString()}`"
+            icon="i-lucide-key-round"
+            color="success"
+            variant="subtle"
+          />
+          <UAlert
+            v-else-if="tokenFormat === 'JWS' && !hasJwksCache"
+            title="No JWKS cached"
+            description="Go to the JWKS step to fetch and cache the provider's public keys before validating."
+            icon="i-lucide-alert-triangle"
+            color="warning"
+            variant="subtle"
+          />
+
           <!-- Signing Secret (for JWE) -->
           <UFormField
             v-if="tokenFormat === 'JWE'"
@@ -153,19 +172,6 @@ function handleRetry() {
               v-model="secret"
               type="password"
               placeholder="Your API signing secret"
-              class="w-full font-mono"
-            />
-          </UFormField>
-
-          <!-- JWKS URI (for JWS) -->
-          <UFormField
-            v-if="tokenFormat === 'JWS'"
-            label="JWKS URI"
-            required
-          >
-            <UInput
-              v-model="jwksUri"
-              placeholder="https://your-provider/.well-known/jwks.json"
               class="w-full font-mono"
             />
           </UFormField>

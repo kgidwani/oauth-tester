@@ -49,6 +49,7 @@ export interface OAuthSession {
   tokenResponse: TokenResponse | null
   tokenError: string | null
   resourceServerResponse: ResourceServerResponse | null
+  jwksCache: JwksCache | null
   createdAt: string
   updatedAt: string
 }
@@ -88,6 +89,14 @@ export interface TokenExchangeResponse {
   rawResponse?: string | null
   exchangeMethod?: 'server' | 'client'
   debugRequest?: Record<string, string>
+}
+
+export interface JwksCache {
+  wellKnownUrl: string
+  issuer: string
+  jwksUri: string
+  keys: Array<Record<string, unknown>>
+  fetchedAt: string
 }
 
 export interface ResourceServerResponse {
