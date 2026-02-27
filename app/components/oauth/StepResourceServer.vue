@@ -24,20 +24,19 @@ const tokenFormat = computed(() => {
 
 const hasJwksCache = computed(() => !!session.value.jwksCache)
 
-// Auto-populate issuer/audience from cached JWKS or token claims
+// Auto-populate issuer/audience — prefer token's own claims since jose matches against them
 onMounted(() => {
-  if (session.value.jwksCache?.issuer) {
-    issuer.value = session.value.jwksCache.issuer
-  }
-
   if (!accessToken.value) return
   const { decodeJwt, isJwt } = useJwtDecode()
   if (!isJwt(String(accessToken.value))) return
   const decoded = decodeJwt(String(accessToken.value))
   if (!decoded) return
 
-  if (!issuer.value && typeof decoded.payload.iss === 'string') {
+  // Use the token's iss claim (exact value jose will compare against)
+  if (typeof decoded.payload.iss === 'string') {
     issuer.value = decoded.payload.iss
+  } else if (session.value.jwksCache?.issuer) {
+    issuer.value = session.value.jwksCache.issuer
   }
 
   if (typeof decoded.payload.aud === 'string') {
