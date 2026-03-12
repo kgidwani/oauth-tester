@@ -1,5 +1,36 @@
 <script setup lang="ts">
-const { session } = useOAuthState()
+const { session, setTokenResponse, saveToStorage } = useOAuthState()
+const { refreshTokens } = useOAuthFlow()
+
+const isRefreshing = ref(false)
+const refreshError = ref<string | null>(null)
+const refreshRawResponse = ref<string | null>(null)
+
+const hasRefreshToken = computed(() => !!session.value.tokenResponse?.refresh_token)
+
+async function handleRefresh() {
+  isRefreshing.value = true
+  refreshError.value = null
+  refreshRawResponse.value = null
+
+  try {
+    const result = await refreshTokens()
+    refreshRawResponse.value = result.rawResponse || null
+
+    if (result.success && result.data) {
+      // Preserve the refresh token if the new response doesn't include one
+      const newRefreshToken = result.data.refresh_token || session.value.tokenResponse?.refresh_token
+      setTokenResponse({ ...result.data, refresh_token: newRefreshToken })
+      saveToStorage()
+    } else {
+      refreshError.value = result.error || 'Refresh failed'
+    }
+  } catch (e: unknown) {
+    refreshError.value = e instanceof Error ? e.message : 'Unexpected error'
+  } finally {
+    isRefreshing.value = false
+  }
+}
 
 const tokens = computed(() => {
   const response = session.value.tokenResponse
@@ -88,6 +119,58 @@ const hasTokens = computed(() => tokens.value.length > 0)
           title="Token Metadata"
           :items="metadata"
         />
+
+        <!-- Refresh Token -->
+        <div
+          v-if="hasRefreshToken"
+          class="border border-default rounded-lg p-4 space-y-3"
+        >
+          <h4 class="text-sm font-semibold">
+            Refresh Token
+          </h4>
+          <p class="text-xs text-muted">
+            Use the refresh token to get a new access token without re-authenticating (grant_type=refresh_token).
+          </p>
+          <div class="flex gap-2">
+            <UButton
+              label="Refresh Tokens"
+              icon="i-lucide-refresh-cw"
+              variant="outline"
+              :loading="isRefreshing"
+              @click="handleRefresh"
+            />
+          </div>
+
+          <UAlert
+            v-if="refreshError"
+            :title="refreshError"
+            icon="i-lucide-x-circle"
+            color="error"
+            variant="subtle"
+          />
+
+          <UAlert
+            v-if="!refreshError && refreshRawResponse"
+            title="Tokens refreshed successfully"
+            description="The access token and metadata above have been updated with the new values."
+            icon="i-lucide-check-circle"
+            color="success"
+            variant="subtle"
+          />
+
+          <div v-if="refreshRawResponse">
+            <h4 class="text-sm font-medium mb-1">
+              Raw Refresh Response
+            </h4>
+            <UTextarea
+              :model-value="refreshRawResponse"
+              readonly
+              :rows="4"
+              autoresize
+              class="font-mono text-xs"
+            />
+          </div>
+        </div>
 
         <!-- Session Info -->
         <div class="text-xs text-dimmed space-y-1">

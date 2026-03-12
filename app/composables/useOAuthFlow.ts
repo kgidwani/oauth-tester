@@ -149,9 +149,87 @@ export function useOAuthFlow() {
     }
   }
 
+  async function refreshTokens(): Promise<TokenExchangeResponse> {
+    const config = session.value.config
+    const tokenEndpoint = resolveEndpoint(config.tokenEndpoint, config.domain)
+    const refreshToken = session.value.tokenResponse?.refresh_token
+
+    if (!refreshToken) {
+      return {
+        success: false,
+        error: 'No refresh token available',
+        statusCode: 0,
+        rawResponse: null
+      }
+    }
+
+    try {
+      return await $fetch<TokenExchangeResponse>('/api/oauth/token', {
+        method: 'POST',
+        body: {
+          tokenEndpoint,
+          grantType: 'refresh_token',
+          refreshToken: String(refreshToken),
+          clientId: config.clientId,
+          clientSecret: config.clientSecret
+        }
+      })
+    } catch {
+      // Fall back to client-side
+      const formParams = new URLSearchParams()
+      formParams.set('grant_type', 'refresh_token')
+      formParams.set('refresh_token', String(refreshToken))
+      formParams.set('client_id', config.clientId)
+      if (config.clientSecret) {
+        formParams.set('client_secret', config.clientSecret)
+      }
+
+      try {
+        const response = await fetch(tokenEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json'
+          },
+          body: formParams.toString()
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          return {
+            success: false,
+            error: (data.error_description as string) || (data.error as string) || 'Refresh failed',
+            statusCode: response.status,
+            rawResponse: JSON.stringify(data, null, 2),
+            exchangeMethod: 'client' as const
+          }
+        }
+
+        return {
+          success: true,
+          data,
+          statusCode: response.status,
+          rawResponse: JSON.stringify(data, null, 2),
+          exchangeMethod: 'client' as const
+        }
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Network error'
+        return {
+          success: false,
+          error: `Client-side refresh failed: ${message}`,
+          statusCode: 0,
+          rawResponse: null,
+          exchangeMethod: 'client' as const
+        }
+      }
+    }
+  }
+
   return {
     buildAuthorizationUrl,
     exchangeCodeForTokens,
+    refreshTokens,
     resolveEndpoint
   }
 }

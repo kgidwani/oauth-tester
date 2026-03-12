@@ -42,13 +42,29 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
 
-  const { tokenEndpoint, grantType, code, redirectUri, clientId, clientSecret, codeVerifier } = body
+  const { tokenEndpoint, grantType, code, redirectUri, clientId, clientSecret, codeVerifier, refreshToken } = body
+
+  const isRefresh = grantType === 'refresh_token'
 
   // --- Required fields ---
-  if (!tokenEndpoint || !code || !redirectUri || !clientId) {
+  if (!tokenEndpoint || !clientId) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Missing required fields: tokenEndpoint, code, redirectUri, clientId'
+      statusMessage: 'Missing required fields: tokenEndpoint, clientId'
+    })
+  }
+
+  if (isRefresh && !refreshToken) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Missing required field: refreshToken (for grant_type=refresh_token)'
+    })
+  }
+
+  if (!isRefresh && (!code || !redirectUri)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Missing required fields: code, redirectUri (for grant_type=authorization_code)'
     })
   }
 
@@ -59,7 +75,8 @@ export default defineEventHandler(async (event) => {
     validateStringLength(redirectUri, 'redirectUri', MAX_REDIRECT_URI_LENGTH),
     validateStringLength(clientId, 'clientId', MAX_CLIENT_ID_LENGTH),
     validateStringLength(clientSecret, 'clientSecret', MAX_SECRET_LENGTH),
-    validateStringLength(codeVerifier, 'codeVerifier', MAX_CODE_VERIFIER_LENGTH)
+    validateStringLength(codeVerifier, 'codeVerifier', MAX_CODE_VERIFIER_LENGTH),
+    validateStringLength(refreshToken, 'refreshToken', MAX_CODE_LENGTH)
   ].filter(Boolean)
 
   if (lengthErrors.length > 0) {
@@ -78,25 +95,33 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // --- Validate redirect URI format ---
-  try {
-    const parsedRedirect = new URL(redirectUri)
-    if (parsedRedirect.protocol !== 'https:' && parsedRedirect.hostname !== 'localhost' && parsedRedirect.hostname !== '127.0.0.1') {
-      throw new Error('Redirect URI must use HTTPS (except localhost)')
+  // --- Validate redirect URI format (only for auth code flow) ---
+  if (!isRefresh && redirectUri) {
+    try {
+      const parsedRedirect = new URL(redirectUri)
+      if (parsedRedirect.protocol !== 'https:' && parsedRedirect.hostname !== 'localhost' && parsedRedirect.hostname !== '127.0.0.1') {
+        throw new Error('Redirect URI must use HTTPS (except localhost)')
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Invalid redirect URI'
+      throw createError({
+        statusCode: 400,
+        statusMessage: `Invalid redirect URI: ${message}`
+      })
     }
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : 'Invalid redirect URI'
-    throw createError({
-      statusCode: 400,
-      statusMessage: `Invalid redirect URI: ${message}`
-    })
   }
 
   const formParams = new URLSearchParams()
-  formParams.set('grant_type', grantType || 'authorization_code')
-  formParams.set('code', code)
-  formParams.set('redirect_uri', redirectUri)
   formParams.set('client_id', clientId)
+
+  if (isRefresh) {
+    formParams.set('grant_type', 'refresh_token')
+    formParams.set('refresh_token', refreshToken)
+  } else {
+    formParams.set('grant_type', grantType || 'authorization_code')
+    formParams.set('code', code)
+    formParams.set('redirect_uri', redirectUri)
+  }
 
   if (clientSecret) {
     formParams.set('client_secret', clientSecret)
