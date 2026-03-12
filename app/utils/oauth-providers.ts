@@ -7,7 +7,7 @@ export const OAUTH_PROVIDER_PRESETS: OAuthProviderPreset[] = [
     icon: 'i-simple-icons-auth0',
     authorizationEndpoint: 'https://{domain}/authorize',
     tokenEndpoint: 'https://{domain}/oauth/token',
-    scopes: ['openid', 'profile', 'email'],
+    scopes: ['openid', 'profile', 'email', 'offline_access'],
     supportsFlows: ['authorization_code', 'authorization_code_pkce', 'implicit'],
     domainRequired: true,
     domainPlaceholder: 'your-tenant.us.auth0.com',
