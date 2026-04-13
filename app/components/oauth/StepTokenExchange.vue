@@ -39,6 +39,29 @@ const hasPkceState = computed(() =>
   session.value.config.flowType !== 'authorization_code_pkce' || !!session.value.pkce?.codeVerifier
 )
 
+const curlCommand = computed(() => {
+  const config = session.value.config
+  const endpoint = tokenEndpointResolved.value
+  const parts = [
+    `grant_type=authorization_code`,
+    `code=${session.value.authorizationCode || '<AUTH_CODE>'}`,
+    `redirect_uri=${config.redirectUri}`,
+    `client_id=${config.clientId}`
+  ]
+
+  if (config.flowType === 'authorization_code' && config.clientSecret) {
+    parts.push(`client_secret=${config.clientSecret}`)
+  }
+
+  if (config.flowType === 'authorization_code_pkce' && session.value.pkce?.codeVerifier) {
+    parts.push(`code_verifier=${session.value.pkce.codeVerifier}`)
+  }
+
+  return `curl -X POST '${endpoint}' \\
+  -H 'Content-Type: application/x-www-form-urlencoded' \\
+  -d '${parts.join('&')}'`
+})
+
 async function handleExchange() {
   isExchanging.value = true
   rawResponse.value = null
@@ -108,6 +131,12 @@ function handleRetry() {
         icon="i-lucide-server"
         color="neutral"
         variant="subtle"
+      />
+
+      <!-- cURL Command -->
+      <OauthCurlCommand
+        v-if="session.authorizationCode"
+        :command="curlCommand"
       />
 
       <!-- Exchange Button -->

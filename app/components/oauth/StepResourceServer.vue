@@ -100,6 +100,26 @@ function handleRetry() {
   session.value.resourceServerResponse = null
   saveToStorage()
 }
+
+const curlCommand = computed(() => {
+  const token = accessToken.value || '<ACCESS_TOKEN>'
+  const body: Record<string, unknown> = {}
+  if (issuer.value) body.issuer = issuer.value
+  if (audience.value) body.audience = audience.value
+
+  if (tokenFormat.value === 'JWE' && secret.value) {
+    body.secret = secret.value
+  } else if (session.value.jwksCache) {
+    body.jwks = { keys: session.value.jwksCache.keys }
+  }
+
+  const bodyJson = JSON.stringify(body)
+
+  return `curl -X POST '${window?.location?.origin || 'http://localhost:3000'}/api/resource' \\
+  -H 'Authorization: Bearer ${token}' \\
+  -H 'Content-Type: application/json' \\
+  -d '${bodyJson}'`
+})
 </script>
 
 <template>
@@ -192,6 +212,12 @@ function handleRetry() {
               class="w-full font-mono"
             />
           </UFormField>
+
+          <!-- cURL Command -->
+          <OauthCurlCommand
+            v-if="accessToken"
+            :command="curlCommand"
+          />
 
           <!-- Call Button -->
           <div class="flex gap-2">

@@ -80,6 +80,36 @@ const metadata = computed(() => {
 })
 
 const hasTokens = computed(() => tokens.value.length > 0)
+
+const { resolveEndpoint } = useOAuthFlow()
+
+const refreshCurlCommand = computed(() => {
+  const config = session.value.config
+  const endpoint = resolveEndpoint(config.tokenEndpoint, config.domain)
+  const refreshToken = session.value.tokenResponse?.refresh_token
+
+  const parts = [
+    `grant_type=refresh_token`,
+    `refresh_token=${refreshToken || '<REFRESH_TOKEN>'}`,
+    `client_id=${config.clientId}`
+  ]
+
+  if (config.clientSecret) {
+    parts.push(`client_secret=${config.clientSecret}`)
+  }
+
+  return `curl -X POST '${endpoint}' \\
+  -H 'Content-Type: application/x-www-form-urlencoded' \\
+  -d '${parts.join('&')}'`
+})
+
+const apiCurlCommand = computed(() => {
+  const token = session.value.tokenResponse?.access_token
+    || session.value.callbackHash?.access_token
+
+  return `curl -H 'Authorization: Bearer ${token || '<ACCESS_TOKEN>'}' \\
+  'https://your-api.example.com/endpoint'`
+})
 </script>
 
 <template>
@@ -120,6 +150,9 @@ const hasTokens = computed(() => tokens.value.length > 0)
           :items="metadata"
         />
 
+        <!-- Use Token cURL -->
+        <OauthCurlCommand :command="apiCurlCommand" />
+
         <!-- Refresh Token -->
         <div
           v-if="hasRefreshToken"
@@ -131,6 +164,10 @@ const hasTokens = computed(() => tokens.value.length > 0)
           <p class="text-xs text-muted">
             Use the refresh token to get a new access token without re-authenticating (grant_type=refresh_token).
           </p>
+
+          <!-- Refresh cURL -->
+          <OauthCurlCommand :command="refreshCurlCommand" />
+
           <div class="flex gap-2">
             <UButton
               label="Refresh Tokens"
