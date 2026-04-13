@@ -4,6 +4,10 @@ import type { TokenExchangeResponse } from '~/types/oauth'
 const { session, setTokenResponse, setTokenError, saveToStorage } = useOAuthState()
 const { exchangeCodeForTokens, resolveEndpoint } = useOAuthFlow()
 
+function copyToClipboard(text: string) {
+  window.navigator.clipboard.writeText(text)
+}
+
 const isExchanging = ref(false)
 const rawResponse = ref<string | null>(null)
 const exchangeResult = ref<TokenExchangeResponse | null>(null)
@@ -112,7 +116,7 @@ function handleRetry() {
           label="Exchange Code for Tokens"
           icon="i-lucide-repeat"
           :loading="isExchanging"
-          :disabled="!session.authorizationCode || !!session.tokenResponse || !hasPkceState"
+          :disabled="!session.authorizationCode || !hasPkceState"
           @click="handleExchange"
         />
         <UButton
@@ -213,6 +217,81 @@ function handleRetry() {
         color="success"
         variant="subtle"
       />
+
+      <!-- Copyable Values -->
+      <div
+        v-if="session.authorizationCode"
+        class="space-y-3"
+      >
+        <div>
+          <h4 class="text-sm font-medium mb-1">
+            Authorization Code
+          </h4>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 text-sm font-mono bg-muted p-3 rounded-lg break-all select-all">{{ session.authorizationCode }}</code>
+            <UButton
+              icon="i-lucide-copy"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              @click="copyToClipboard(session.authorizationCode!)"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="session.tokenResponse"
+        class="space-y-3"
+      >
+        <div v-if="session.tokenResponse.access_token">
+          <h4 class="text-sm font-medium mb-1">
+            Access Token
+          </h4>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 text-xs font-mono bg-muted p-3 rounded-lg break-all select-all max-h-32 overflow-auto">{{ session.tokenResponse.access_token }}</code>
+            <UButton
+              icon="i-lucide-copy"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              @click="copyToClipboard(String(session.tokenResponse!.access_token))"
+            />
+          </div>
+        </div>
+
+        <div v-if="session.tokenResponse.id_token">
+          <h4 class="text-sm font-medium mb-1">
+            ID Token
+          </h4>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 text-xs font-mono bg-muted p-3 rounded-lg break-all select-all max-h-32 overflow-auto">{{ session.tokenResponse.id_token }}</code>
+            <UButton
+              icon="i-lucide-copy"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              @click="copyToClipboard(String(session.tokenResponse!.id_token))"
+            />
+          </div>
+        </div>
+
+        <div v-if="session.tokenResponse.refresh_token">
+          <h4 class="text-sm font-medium mb-1">
+            Refresh Token
+          </h4>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 text-xs font-mono bg-muted p-3 rounded-lg break-all select-all max-h-32 overflow-auto">{{ session.tokenResponse.refresh_token }}</code>
+            <UButton
+              icon="i-lucide-copy"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              @click="copyToClipboard(String(session.tokenResponse!.refresh_token))"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   </UCard>
 </template>
